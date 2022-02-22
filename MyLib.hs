@@ -13,7 +13,7 @@ import Control.Monad
 import Data.List
 import Data.Map
 
-type SwingMap = Map Int Int
+type SwingMap = Map [String] Int
 
 u = undefined
 
@@ -28,6 +28,11 @@ restOfLine = many (noneOf "\n") >> newline
 
 boringRow :: String -> Parsec String SwingMap String
 boringRow str = string str >> restOfLine >> return "row"
+
+ww :: Parsec String SwingMap SwingMap
+ww = do
+  w
+  getState
 
 w :: Parsec String SwingMap [String]
 w = parseDate >> boringRow "COMBAT_LOG_VERSION,9,ADVANCED_LOG_ENABLED,1"
@@ -63,6 +68,8 @@ swingDamage :: String -> Bool -> Parsec String SwingMap String
 swingDamage date landed = do
   src  <- replicateM 4 word
   dest <- replicateM 4 word
+  let key = date : src :: [String]
+  modifyState $ insertWith (+) key 1
   srcOrDest <- word
   let target = if landed then dest else src
   parserFailIf (srcOrDest /= head target) $ srcOrDest ++ " /= " ++ head src
@@ -94,3 +101,5 @@ str = [r|2/19 21:34:06.467  COMBAT_LOG_VERSION,9,ADVANCED_LOG_ENABLED,1,bla
 k :: Either Text.Parsec.Error.ParseError [String]
 -- k = p w str
 k = runParser w Data.Map.empty "" str
+
+kk = runParser ww Data.Map.empty "" str
