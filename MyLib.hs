@@ -15,29 +15,36 @@ p :: Stream s Data.Functor.Identity.Identity t =>
      Parsec s () a -> s -> Either ParseError a
 p x s = parse x "" s
 
-date :: Parser String
-date = many1 $ Text.Parsec.Char.digit <|> oneOf "/ :."
+parseDate :: Parser String
+parseDate = many1 $ Text.Parsec.Char.digit <|> oneOf "/ :."
 
 restOfLine = many (noneOf "\n") >> newline
 
-row :: String -> Parser String
-row str = date >> string str >> restOfLine >> return "row"
+row' :: String -> Parser String
+row' str = string str >> restOfLine >> return "row"
 
 w :: Parser [String]
-w = row "COMBAT_LOG_VERSION,9,ADVANCED_LOG_ENABLED,1" >>
-  many (try (row "ZONE_CHANGE") <|>
-        try (row "MAP_CHANGE")  <|>
-        try (row "SPELL_AURA")  <|>
-        swingDamage
-        )
+w = parseDate >> row' "COMBAT_LOG_VERSION,9,ADVANCED_LOG_ENABLED,1"
+        >> many row <* eof
+
+row :: Parser String
+row = do
+  date <- parseDate
+  row' "ZONE_CHANGE" <|>
+    row' "MAP_CHANGE"  <|>
+    (char 'S' >> row_S date)
+
+row_S :: String -> Parser String
+row_S date = do
+  row' "PELL_AURA"  <|>
+        swingDamage date
 
 word :: Parser String
 word = char ',' >> many1 (letter <|> digit <|> oneOf "-_\" .")
 
-swingDamage :: Parser String
-swingDamage = do
-  d <- date
-  string "SWING_DAMAGE"
+swingDamage :: String -> Parser String
+swingDamage date = do
+  string "WING_DAMAGE"
   src  <- replicateM 4 word
   dest <- replicateM 4 word
   srcOrDest <- word
