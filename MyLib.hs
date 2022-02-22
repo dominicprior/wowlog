@@ -20,35 +20,46 @@ parseDate = many1 $ Text.Parsec.Char.digit <|> oneOf "/ :."
 
 restOfLine = many (noneOf "\n") >> newline
 
-row' :: String -> Parser String
-row' str = string str >> restOfLine >> return "row"
+boringRow :: String -> Parser String
+boringRow str = string str >> restOfLine >> return "row"
 
 w :: Parser [String]
-w = parseDate >> row' "COMBAT_LOG_VERSION,9,ADVANCED_LOG_ENABLED,1"
+w = parseDate >> boringRow "COMBAT_LOG_VERSION,9,ADVANCED_LOG_ENABLED,1"
         >> many row <* eof
 
 row :: Parser String
 row = do
   date <- parseDate
-  row' "ZONE_CHANGE" <|>
-    row' "MAP_CHANGE"  <|>
+  boringRow "ZONE_CHANGE" <|>
+    boringRow "MAP_CHANGE"  <|>
     (char 'S' >> row_S date)
 
 row_S :: String -> Parser String
 row_S date = do
-  row' "PELL_AURA"  <|>
-        swingDamage date
+  boringRow "PELL_AURA"  <|>
+    (string "WING_DAMAGE" >> row_SWING_DAMAGE date)
+
+row_SWING_DAMAGE :: String -> Parser String
+row_SWING_DAMAGE date = do
+  (string "_LANDED" >> swingDamage date True)
+                   <|> swingDamage date False
 
 word :: Parser String
 word = char ',' >> many1 (letter <|> digit <|> oneOf "-_\" .")
 
-swingDamage :: String -> Parser String
-swingDamage date = do
-  string "WING_DAMAGE"
+parserFailIf :: Bool -> String -> ParsecT s u m ()
+parserFailIf cond str =
+  if cond
+  then parserFail str
+  else return ()
+
+swingDamage :: String -> Bool -> Parser String
+swingDamage date landed = do
   src  <- replicateM 4 word
   dest <- replicateM 4 word
   srcOrDest <- word
-  guard $ srcOrDest == head src
+  let target = if landed then dest else src
+  parserFailIf (srcOrDest /= head target) $ srcOrDest ++ " /= " ++ head src
   string ",0000000000000000"
   currHp <- char ',' >> many digit
   string ",100"
@@ -77,6 +88,7 @@ str = [r|2/19 21:34:06.467  COMBAT_LOG_VERSION,9,ADVANCED_LOG_ENABLED,1,bla
 2/19 21:34:11.023  MAP_CHANGE,bla
 2/19 21:34:34.693  SWING_DAMAGE,Player-4456-01E73915,"Sidespin-NethergardeKeep",0x511,0x0,Creature-0-5571-0-262-1186-0000913776,"Elder Black Bear",0x10a48,0x0,Player-4456-01E73915,0000000000000000,100,100,367,0,2268,1,110,1000,0,-5799.95,-3087.99,1432,2.2373,28,149,81,-1,1,0,0,0,1,nil,nil
 2/19 21:34:36.392  SWING_DAMAGE,Player-4456-01E73915,"Sidespin-NethergardeKeep",0x511,0x0,Creature-0-5571-0-262-1186-0000913776,"Elder Black Bear",0x10a48,0x0,Player-4456-01E73915,0000000000000000,100,100,367,0,2268,1,166,1000,0,-5799.95,-3087.99,1432,2.2373,28,64,68,-1,1,0,0,0,nil,nil,nil
+2/19 21:34:34.693  SWING_DAMAGE_LANDED,Player-4456-01E73915,"Sidespin-NethergardeKeep",0x511,0x0,Creature-0-5571-0-262-1186-0000913776,"Elder Black Bear",0x10a48,0x0,Creature-0-5571-0-262-1186-0000913776,0000000000000000,44,100,0,0,0,-1,0,0,0,-5801.52,-3086.12,1432,5.2693,11,149,81,-1,1,0,0,0,1,nil,nil
 |]
 
 k :: Either Text.Parsec.Error.ParseError [String]
