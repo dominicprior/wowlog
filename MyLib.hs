@@ -10,41 +10,47 @@ import Text.Parsec.Error
 import Data.Functor.Identity
 import Text.RawString.QQ
 import Control.Monad
+import Data.List
+import Data.Map
+
+type SwingMap = Map Int Int
+
+u = undefined
 
 p :: Stream s Data.Functor.Identity.Identity t =>
      Parsec s () a -> s -> Either ParseError a
 p x s = parse x "" s
 
-parseDate :: Parser String
+parseDate :: Parsec String SwingMap String
 parseDate = many1 $ Text.Parsec.Char.digit <|> oneOf "/ :."
 
 restOfLine = many (noneOf "\n") >> newline
 
-boringRow :: String -> Parser String
+boringRow :: String -> Parsec String SwingMap String
 boringRow str = string str >> restOfLine >> return "row"
 
-w :: Parser [String]
+w :: Parsec String SwingMap [String]
 w = parseDate >> boringRow "COMBAT_LOG_VERSION,9,ADVANCED_LOG_ENABLED,1"
         >> many row <* eof
 
-row :: Parser String
+row :: Parsec String SwingMap String
 row = do
   date <- parseDate
   boringRow "ZONE_CHANGE" <|>
     boringRow "MAP_CHANGE"  <|>
     (char 'S' >> row_S date)
 
-row_S :: String -> Parser String
+row_S :: String -> Parsec String SwingMap String
 row_S date = do
   boringRow "PELL_AURA"  <|>
     (string "WING_DAMAGE" >> row_SWING_DAMAGE date)
 
-row_SWING_DAMAGE :: String -> Parser String
+row_SWING_DAMAGE :: String -> Parsec String SwingMap String
 row_SWING_DAMAGE date = do
   (string "_LANDED" >> swingDamage date True)
                    <|> swingDamage date False
 
-word :: Parser String
+word :: Parsec String SwingMap String
 word = char ',' >> many1 (letter <|> digit <|> oneOf "-_\" .")
 
 parserFailIf :: Bool -> String -> ParsecT s u m ()
@@ -53,7 +59,7 @@ parserFailIf cond str =
   then parserFail str
   else return ()
 
-swingDamage :: String -> Bool -> Parser String
+swingDamage :: String -> Bool -> Parsec String SwingMap String
 swingDamage date landed = do
   src  <- replicateM 4 word
   dest <- replicateM 4 word
@@ -61,24 +67,18 @@ swingDamage date landed = do
   let target = if landed then dest else src
   parserFailIf (srcOrDest /= head target) $ srcOrDest ++ " /= " ++ head src
   string ",0000000000000000"
-  currHp <- char ',' >> many digit
-  string ",100"
-  replicateM 3 word
+  unitInfo <- replicateM 5 word  -- curr hp, max hp, attack power, spell power, armor
   char ','
-  absorb <- string "1" <|> string "-1"
-  currPower <- word
-  word   -- max power
+  absorb <- string "1" <|> string "-1"  -- what is absorb?
+  moreUnitInfo <- replicateM 2 word  -- curr power, max power
+  let allUnitInfo = unitInfo ++ moreUnitInfo
   string ",0"
   replicateM 4 word   -- posX, posY, map id, facing
   level <- word
-  amount <- word
-  overkill <- word
-  school <- word
-  string ",1,0,0,0"  -- ? resisted, blocked, absorbed, glancing ?
-  crit <- word   -- 1 or nil
-  string ",nil,nil"  -- crushing, isOffHand
+  -- amount, overkill, school, resisted, blocked, absorbed, crit, glancing, crushing, isOffHand
+  dmgInfo <- replicateM 10 word
   newline
-  return $ amount
+  return $ intercalate ", " dmgInfo
 
 
 
@@ -92,4 +92,5 @@ str = [r|2/19 21:34:06.467  COMBAT_LOG_VERSION,9,ADVANCED_LOG_ENABLED,1,bla
 |]
 
 k :: Either Text.Parsec.Error.ParseError [String]
-k = p w str
+-- k = p w str
+k = runParser w Data.Map.empty "" str
