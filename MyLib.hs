@@ -156,7 +156,9 @@ yy :: ParsecT String [String] (Control.Monad.State.State [String]) [String]
 yy = do
   mo "start"
   moo "s"
-  try (mo "foo" >> moo "f" >> string "cap") <|> string "cat"
+  try (mo "foo" >> moo "f1" >> string "cap" >> moo "f2" >> string "dog")
+      <|>
+      string "cat"
   mo "end"
   moo "e"
   getState
