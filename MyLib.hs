@@ -143,15 +143,6 @@ mo s = modifyState (++ [s])
 
 moo s = modify (++ [s])
 
-y :: Parsec String [String] [String]
-y = do
-  mo "start"
-  try (mo "foo" >> string "cap") <|> string "cat"
-  mo "end"
-  getState
-
-q = runParser y [] "" "cat"   -- Right ["Start", "End"]
-
 yy :: ParsecT String [String] (Control.Monad.State.State [String]) [String]
 yy = do
   mo "start"
@@ -163,4 +154,5 @@ yy = do
   moo "e"
   getState
 
+-- gives: (Right ["start","end"],["s","f1","e"])
 qq = runState (runParserT yy [] "" "cat") []
