@@ -64,12 +64,23 @@ parserFailIf cond str =
   then parserFail str
   else return ()
 
+updateSwingMap :: [String] -> SwingMap -> Bool -> Parsec String SwingMap ()
+updateSwingMap key m landed =
+  if member key m
+  then if landed
+       then modifyState $ Data.Map.delete key
+       else parserFail "duplicate"
+  else if landed
+       then parserFail "not found"
+       else modifyState $ Data.Map.insert key 1
+
 swingDamage :: String -> Bool -> Parsec String SwingMap String
 swingDamage date landed = do
   src  <- replicateM 4 word
   dest <- replicateM 4 word
-  let key = date : src :: [String]
-  modifyState $ insertWith (+) key 1
+  let key = date : src
+  state <- getState
+  updateSwingMap key state landed
   srcOrDest <- word
   let target = if landed then dest else src
   parserFailIf (srcOrDest /= head target) $ srcOrDest ++ " /= " ++ head src
