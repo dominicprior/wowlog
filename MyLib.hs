@@ -29,7 +29,7 @@ parseDate = many1 $ Text.Parsec.Char.digit <|> oneOf "/ :."
 restOfLine = many (noneOf "\n") >> newline
 
 boringRow :: String -> Parsec String SwingSet String
-boringRow str = string str >> restOfLine >> return "row"
+boringRow str = try (string str) >> restOfLine >> return "row"
 
 ww :: Parsec String SwingSet SwingSet
 ww = do
@@ -37,8 +37,11 @@ ww = do
   getState
 
 w :: Parsec String SwingSet [String]
-w = parseDate >> boringRow "COMBAT_LOG_VERSION,9,ADVANCED_LOG_ENABLED,1"
-        >> many row <* eof
+w = do
+  parseDate
+  string "COMBAT_LOG_VERSION,9,ADVANCED_LOG_ENABLED,1"
+  restOfLine
+  many row <* eof
 
 row :: Parsec String SwingSet String
 row = do
@@ -47,23 +50,10 @@ row = do
     boringRow "MAP_CHANGE"  <|>
     boringRow "PARTY_KILL"  <|>
     boringRow "UNIT_DIED"   <|>
-    (char 'S' >> row_S date)
-
-row_S :: String -> Parsec String SwingSet String
-row_S date =
-  (string "PELL_" >> row_SPELL_ date)
-  <|>
-  (string "WING_DAMAGE" >> row_SWING_DAMAGE date)
-
-row_SPELL_ :: String -> Parsec String SwingSet String
-row_SPELL_ date =
-  boringRow "AURA" <|>
-  boringRow "DAMAGE"
-
-row_SWING_DAMAGE :: String -> Parsec String SwingSet String
-row_SWING_DAMAGE date = do
-  (string "_LANDED" >> swingDamage date True)
-                   <|> swingDamage date False
+    boringRow "SPELL_AURA_APPLIED"   <|>
+    boringRow "SPELL_DAMAGE"   <|>
+    (try (string "SWING_DAMAGE_LANDED") >> swingDamage date True) <|>
+    (string "SWING_DAMAGE" >> swingDamage date False)
 
 word :: Parsec String SwingSet String
 word = char ',' >> many1 (letter <|> digit <|> oneOf "-_\" .")
@@ -134,7 +124,6 @@ str = [r|2/19 21:34:06.467  COMBAT_LOG_VERSION,9,ADVANCED_LOG_ENABLED,1,BUILD_VE
 |]
 
 k :: Either Text.Parsec.Error.ParseError [String]
--- k = p w str
 k = runParser w Data.Set.empty "" str
 
 kk = runParser ww Data.Set.empty "" str
