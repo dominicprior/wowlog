@@ -12,8 +12,9 @@ import Text.RawString.QQ
 import Control.Monad
 import Data.List
 import Data.Map
+import Data.Set
 
-type SwingMap = Map [String] Int
+type SwingSet = Set [String]
 
 u = undefined
 
@@ -21,41 +22,41 @@ p :: Stream s Data.Functor.Identity.Identity t =>
      Parsec s () a -> s -> Either ParseError a
 p x s = parse x "" s
 
-parseDate :: Parsec String SwingMap String
+parseDate :: Parsec String SwingSet String
 parseDate = many1 $ Text.Parsec.Char.digit <|> oneOf "/ :."
 
 restOfLine = many (noneOf "\n") >> newline
 
-boringRow :: String -> Parsec String SwingMap String
+boringRow :: String -> Parsec String SwingSet String
 boringRow str = string str >> restOfLine >> return "row"
 
-ww :: Parsec String SwingMap SwingMap
+ww :: Parsec String SwingSet SwingSet
 ww = do
   w
   getState
 
-w :: Parsec String SwingMap [String]
+w :: Parsec String SwingSet [String]
 w = parseDate >> boringRow "COMBAT_LOG_VERSION,9,ADVANCED_LOG_ENABLED,1"
         >> many row <* eof
 
-row :: Parsec String SwingMap String
+row :: Parsec String SwingSet String
 row = do
   date <- parseDate
   boringRow "ZONE_CHANGE" <|>
     boringRow "MAP_CHANGE"  <|>
     (char 'S' >> row_S date)
 
-row_S :: String -> Parsec String SwingMap String
+row_S :: String -> Parsec String SwingSet String
 row_S date = do
   boringRow "PELL_AURA"  <|>
     (string "WING_DAMAGE" >> row_SWING_DAMAGE date)
 
-row_SWING_DAMAGE :: String -> Parsec String SwingMap String
+row_SWING_DAMAGE :: String -> Parsec String SwingSet String
 row_SWING_DAMAGE date = do
   (string "_LANDED" >> swingDamage date True)
                    <|> swingDamage date False
 
-word :: Parsec String SwingMap String
+word :: Parsec String SwingSet String
 word = char ',' >> many1 (letter <|> digit <|> oneOf "-_\" .")
 
 parserFailIf :: Bool -> String -> ParsecT s u m ()
@@ -64,23 +65,23 @@ parserFailIf cond str =
   then parserFail str
   else return ()
 
-updateSwingMap :: [String] -> SwingMap -> Bool -> Parsec String SwingMap ()
-updateSwingMap key m landed =
-  if member key m
+updateSwingSet :: [String] -> SwingSet -> Bool -> Parsec String SwingSet ()
+updateSwingSet key m landed =
+  if Data.Set.member key m
   then if landed
-       then modifyState $ Data.Map.delete key
+       then modifyState $ Data.Set.delete key
        else parserFail "duplicate"
   else if landed
        then parserFail "not found"
-       else modifyState $ Data.Map.insert key 1
+       else modifyState $ Data.Set.insert key
 
-swingDamage :: String -> Bool -> Parsec String SwingMap String
+swingDamage :: String -> Bool -> Parsec String SwingSet String
 swingDamage date landed = do
   src  <- replicateM 4 word
   dest <- replicateM 4 word
   let key = date : src
   state <- getState
-  updateSwingMap key state landed
+  updateSwingSet key state landed
   srcOrDest <- word
   let target = if landed then dest else src
   parserFailIf (srcOrDest /= head target) $ srcOrDest ++ " /= " ++ head src
@@ -111,6 +112,6 @@ str = [r|2/19 21:34:06.467  COMBAT_LOG_VERSION,9,ADVANCED_LOG_ENABLED,1,bla
 
 k :: Either Text.Parsec.Error.ParseError [String]
 -- k = p w str
-k = runParser w Data.Map.empty "" str
+k = runParser w Data.Set.empty "" str
 
-kk = runParser ww Data.Map.empty "" str
+kk = runParser ww Data.Set.empty "" str
