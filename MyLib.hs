@@ -14,6 +14,8 @@ import Data.List
 import Data.Map
 import Data.Set
 import Control.Monad.State
+import System.IO
+import System.Directory
 
 type SwingSet = Set [String]
 
@@ -31,10 +33,8 @@ restOfLine = many (noneOf "\n") >> newline
 boringRow :: String -> Parsec String SwingSet String
 boringRow str = try (string str) >> restOfLine >> return "row"
 
-ww :: Parsec String SwingSet SwingSet
-ww = do
-  w
-  getState
+ww :: Parsec String SwingSet ([String], SwingSet)
+ww = (,) <$> w <*> getState
 
 w :: Parsec String SwingSet [String]
 w = do
@@ -50,7 +50,11 @@ row = do
     boringRow "MAP_CHANGE"  <|>
     boringRow "PARTY_KILL"  <|>
     boringRow "UNIT_DIED"   <|>
+    boringRow "SPELL_CAST_SUCCESS"   <|>
     boringRow "SPELL_AURA_APPLIED"   <|>
+    boringRow "SPELL_AURA_REMOVED"   <|>
+    boringRow "SPELL_CAST_START"   <|>
+    boringRow "SPELL_PERIODIC_HEAL"   <|>
     boringRow "SPELL_DAMAGE"   <|>
     (try (string "SWING_DAMAGE_LANDED") >> swingDamage date True) <|>
     (string "SWING_DAMAGE" >> swingDamage date False)
@@ -127,6 +131,16 @@ k :: Either Text.Parsec.Error.ParseError [String]
 k = runParser w Data.Set.empty "" str
 
 kk = runParser ww Data.Set.empty "" str
+
+dir = "C:/Program Files (x86)/World of Warcraft/_classic_/Logs"
+
+m :: IO ()
+m = do
+  files <- listDirectory dir
+  let latest = maximum $ Data.List.filter (isPrefixOf "WoWCombatLog") files
+  putStrLn latest
+  str <- readFile $ dir ++ "/" ++ latest
+  print $ runParser ww Data.Set.empty "" str
 
 mo s = modifyState (++ [s])
 
