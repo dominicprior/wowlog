@@ -13,6 +13,7 @@ import Control.Monad
 import Data.List
 import Data.Map
 import Data.Set
+import Control.Monad.State
 
 type SwingSet = Set [String]
 
@@ -137,3 +138,27 @@ k :: Either Text.Parsec.Error.ParseError [String]
 k = runParser w Data.Set.empty "" str
 
 kk = runParser ww Data.Set.empty "" str
+
+mo s = modifyState (++ [s])
+
+moo s = modify (++ [s])
+
+y :: Parsec String [String] [String]
+y = do
+  mo "start"
+  try (mo "foo" >> string "cap") <|> string "cat"
+  mo "end"
+  getState
+
+q = runParser y [] "" "cat"   -- Right ["Start", "End"]
+
+yy :: ParsecT String [String] (Control.Monad.State.State [String]) [String]
+yy = do
+  mo "start"
+  moo "s"
+  try (mo "foo" >> moo "f" >> string "cap") <|> string "cat"
+  mo "end"
+  moo "e"
+  getState
+
+qq = runState (runParserT yy [] "" "cat") []
