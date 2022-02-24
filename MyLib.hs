@@ -110,7 +110,11 @@ swingDamage date landed = do
   string ",0"
   replicateM 4 word   -- posX, posY, map id, facing
   level <- word
-  -- amount, overkill, school, resisted, blocked, absorbed, crit, glancing, crushing, isOffHand
+  -- amount, amount before armor, overkill (minus one means no overkill)
+  -- 44,     48,                  28,
+  -- ??? resisted, blocked, absorbed, crit, glancing, crushing, isOffHand
+  -- 1, 0, 0, 0, nil, nil, nil
+  -- Sidespin's melee swing hits Elder Black Bear for 16 Physical.(28 Overkill)
   dmgInfo <- replicateM 10 word
   newline
   let key = date : src
@@ -156,7 +160,6 @@ m = do
   let files = Data.List.filter (isPrefixOf "WoWCombatLog") allFiles
   print $ length files
   mapM_ oneLog files
-  -- oneLog latest
 
 filterRight x =
   case x of
@@ -168,7 +171,13 @@ oneLog file = do
   putStrLn file
   str <- readFile $ dir ++ "/" ++ file
   let res = runParser ww Data.Map.empty "" str :: Either Text.Parsec.Error.ParseError ([String], SwingMap)
-  print $ filterRight res
+  printLog $ filterRight res
+
+printLog :: Either ParseError ([String], SwingMap) -> IO ()
+printLog res = do
+  case res of
+    Left a -> print a
+    Right b -> forM_ (fst b) $ putStrLn
 
 mo s = modifyState (++ [s])
 
@@ -187,6 +196,3 @@ yy = do
 
 -- gives: (Right ["start","end"],["s","f1","e"])
 qq = runState (runParserT yy [] "" "cat") []
-
-mm :: Map Int Int
-mm = Data.Map.insert 3 4 Data.Map.empty
