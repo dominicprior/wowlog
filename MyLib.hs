@@ -34,7 +34,8 @@ boringRow :: String -> Parsec String SwingSet String
 boringRow str = try (string str) >> restOfLine >> return "row"
 
 ww :: Parsec String SwingSet ([String], SwingSet)
-ww = (,) <$> w <*> getState
+-- ww = (,) <$> w <*> getState
+ww = liftM2 (,) w getState
 
 w :: Parsec String SwingSet [String]
 w = do
@@ -50,12 +51,20 @@ row = do
     boringRow "MAP_CHANGE"  <|>
     boringRow "PARTY_KILL"  <|>
     boringRow "UNIT_DIED"   <|>
+    boringRow "ENVIRONMENTAL_DAMAGE"   <|>
+    boringRow "COMBAT_LOG_VERSION"   <|>
     boringRow "SPELL_CAST_SUCCESS"   <|>
     boringRow "SPELL_AURA_APPLIED"   <|>
     boringRow "SPELL_AURA_REMOVED"   <|>
+    boringRow "SPELL_AURA_REFRESH"   <|>
     boringRow "SPELL_CAST_START"   <|>
     boringRow "SPELL_PERIODIC_HEAL"   <|>
     boringRow "SPELL_DAMAGE"   <|>
+    boringRow "SPELL_ENERGIZE"   <|>
+    boringRow "SPELL_HEAL"   <|>
+    boringRow "SPELL_DRAIN"   <|>
+    boringRow "SPELL_PERIODIC_ENERGIZE"   <|>
+    boringRow "SWING_MISSED"   <|>
     (try (string "SWING_DAMAGE_LANDED") >> swingDamage date True) <|>
     (string "SWING_DAMAGE" >> swingDamage date False)
 
@@ -136,11 +145,23 @@ dir = "C:/Program Files (x86)/World of Warcraft/_classic_/Logs"
 
 m :: IO ()
 m = do
-  files <- listDirectory dir
-  let latest = maximum $ Data.List.filter (isPrefixOf "WoWCombatLog") files
-  putStrLn latest
-  str <- readFile $ dir ++ "/" ++ latest
-  print $ runParser ww Data.Set.empty "" str
+  allFiles <- listDirectory dir
+  let files = Data.List.filter (isPrefixOf "WoWCombatLog") allFiles
+  print $ length files
+  mapM_ oneLog files
+  -- oneLog latest
+
+filterRight x =
+  case x of
+    Left x -> Left x
+    Right (p,q) -> Right (Data.List.filter (/= "row") p, q)
+
+oneLog :: String -> IO ()
+oneLog file = do
+  putStrLn file
+  str <- readFile $ dir ++ "/" ++ file
+  let res = runParser ww Data.Set.empty "" str :: Either Text.Parsec.Error.ParseError ([String], SwingSet)
+  print $ filterRight res
 
 mo s = modifyState (++ [s])
 
