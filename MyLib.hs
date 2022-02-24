@@ -17,7 +17,7 @@ import Control.Monad.State
 import System.IO
 import System.Directory
 
-type SwingSet = Set [String]
+type SwingMap = Map [String] [String]
 
 u = undefined
 
@@ -25,26 +25,26 @@ p :: Stream s Data.Functor.Identity.Identity t =>
      Parsec s () a -> s -> Either ParseError a
 p x s = parse x "" s
 
-parseDate :: Parsec String SwingSet String
+parseDate :: Parsec String SwingMap String
 parseDate = many1 $ Text.Parsec.Char.digit <|> oneOf "/ :."
 
 restOfLine = many (noneOf "\n") >> newline
 
-boringRow :: String -> Parsec String SwingSet String
+boringRow :: String -> Parsec String SwingMap String
 boringRow str = try (string str) >> restOfLine >> return "row"
 
-ww :: Parsec String SwingSet ([String], SwingSet)
+ww :: Parsec String SwingMap ([String], SwingMap)
 -- ww = (,) <$> w <*> getState
 ww = liftM2 (,) w getState
 
-w :: Parsec String SwingSet [String]
+w :: Parsec String SwingMap [String]
 w = do
   parseDate
   string "COMBAT_LOG_VERSION,9,ADVANCED_LOG_ENABLED,1"
   restOfLine
   many row <* eof
 
-row :: Parsec String SwingSet String
+row :: Parsec String SwingMap String
 row = do
   date <- parseDate
   boringRow   "ZONE_CHANGE" <|>
@@ -68,7 +68,7 @@ row = do
     (try (string "SWING_DAMAGE_LANDED") >> swingDamage date True) <|>
     (string "SWING_DAMAGE" >> swingDamage date False)
 
-word :: Parsec String SwingSet String
+word :: Parsec String SwingMap String
 word = char ',' >> many1 (letter <|> digit <|> oneOf "-_\" .")
 
 parserFailIf :: Bool -> String -> ParsecT s u m ()
@@ -77,23 +77,27 @@ parserFailIf cond str =
   then parserFail str
   else return ()
 
-updateSwingSet :: [String] -> SwingSet -> Bool -> Parsec String SwingSet ()
-updateSwingSet key m landed =
-  if Data.Set.member key m
+checkDetailsMatch :: [String] -> [String] -> Parsec String SwingMap ()
+checkDetailsMatch origDmg dmgInfo =
+  if dmgInfo == origDmg
+  then return ()
+  else parserFail "mismatch"
+
+updateSwingMap :: [String] -> SwingMap -> Bool -> [String] -> Parsec String SwingMap ()
+updateSwingMap key m landed dmgInfo =
+  if Data.Map.member key m
   then if landed
-       then modifyState $ Data.Set.delete key
+       then checkDetailsMatch (m Data.Map.! key) dmgInfo >>
+            (modifyState $ Data.Map.delete key)
        else parserFail "duplicate"
   else if landed
        then parserFail "not found"
-       else modifyState $ Data.Set.insert key
+       else modifyState $ Data.Map.insert key dmgInfo
 
-swingDamage :: String -> Bool -> Parsec String SwingSet String
+swingDamage :: String -> Bool -> Parsec String SwingMap String
 swingDamage date landed = do
   src  <- replicateM 4 word
   dest <- replicateM 4 word
-  let key = date : src
-  state <- getState
-  updateSwingSet key state landed
   srcOrDest <- word
   let target = if landed then dest else src
   parserFailIf (srcOrDest /= head target) $ srcOrDest ++ " /= " ++ head src
@@ -109,7 +113,10 @@ swingDamage date landed = do
   -- amount, overkill, school, resisted, blocked, absorbed, crit, glancing, crushing, isOffHand
   dmgInfo <- replicateM 10 word
   newline
-  return $ intercalate ", " dmgInfo
+  let key = date : src
+  state <- getState
+  updateSwingMap key state landed dmgInfo
+  return $ if landed then "row" else intercalate ", " dmgInfo
 
 
 
@@ -137,9 +144,9 @@ str = [r|2/19 21:34:06.467  COMBAT_LOG_VERSION,9,ADVANCED_LOG_ENABLED,1,BUILD_VE
 |]
 
 k :: Either Text.Parsec.Error.ParseError [String]
-k = runParser w Data.Set.empty "" str
+k = runParser w Data.Map.empty "" str
 
-kk = runParser ww Data.Set.empty "" str
+kk = runParser ww Data.Map.empty "" str
 
 dir = "C:/Program Files (x86)/World of Warcraft/_classic_/Logs"
 
@@ -160,7 +167,7 @@ oneLog :: String -> IO ()
 oneLog file = do
   putStrLn file
   str <- readFile $ dir ++ "/" ++ file
-  let res = runParser ww Data.Set.empty "" str :: Either Text.Parsec.Error.ParseError ([String], SwingSet)
+  let res = runParser ww Data.Map.empty "" str :: Either Text.Parsec.Error.ParseError ([String], SwingMap)
   print $ filterRight res
 
 mo s = modifyState (++ [s])
@@ -180,3 +187,6 @@ yy = do
 
 -- gives: (Right ["start","end"],["s","f1","e"])
 qq = runState (runParserT yy [] "" "cat") []
+
+mm :: Map Int Int
+mm = Data.Map.insert 3 4 Data.Map.empty
